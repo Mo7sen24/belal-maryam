@@ -2332,8 +2332,7 @@ html.fp-on .fpw{display:block}
     <form
         id="rsvpForm"
         class="card rv"
-        method="POST"
-        target="rsvpFrame"
+        novalidate
     >
 
         <label for="rsvpName">
@@ -2349,21 +2348,6 @@ html.fp-on .fpw{display:block}
             autocomplete="name"
             required
         >
-
-
-        <label for="rsvpEmail">
-            EMAIL (OPTIONAL)
-        </label>
-
-
-        <input
-            id="rsvpEmail"
-            name="email"
-            type="email"
-            placeholder="your@email.com"
-            autocomplete="email"
-        >
-
 
         <label>
             WILL YOU ATTEND? *
@@ -2398,7 +2382,7 @@ html.fp-on .fpw{display:block}
 
 
         <label for="rsvpMessage">
-            MESSAGE FOR BELAL &amp; MARYAM (OPTIONAL)
+            MESSAGE FOR BELAL &amp; MARYAM *
         </label>
 
 
@@ -2407,6 +2391,7 @@ html.fp-on .fpw{display:block}
             name="message"
             rows="3"
             placeholder="Write us a few words..."
+            required
         ></textarea>
 
 
@@ -2435,14 +2420,6 @@ html.fp-on .fpw{display:block}
         </div>
 
     </form>
-
-
-    <iframe
-        name="rsvpFrame"
-        id="rsvpFrame"
-        style="display:none;"
-        title="RSVP submission"
-    ></iframe>
 
 </section>
 
@@ -2516,30 +2493,21 @@ const $$ = (s,e=document) => [...e.querySelectorAll(s)];
 
 /* =========================================================
    RSVP - GOOGLE SHEETS
-   ========================================================= */
+   =========================================================
+   Paste the Web App URL of your Google Apps Script here
+   (it ends with /exec). See rsvp-apps-script.gs for the steps.
+*/
 
-const RSVP_URL =
-"https://script.google_zFgxXWI4_EmzrBJf_n42WfVwRUX6rBr8H23MROsnw_Me9kYA74F62Rz3Fcev8vg/exec";
+const RSVP_URL = "https://script.google.com/macros/s/AKfycbwUrPSMycygbC9uMbs5px4cJnLQQOJzQJGtmygRmg4nbteIVx-qEC3JDXJPLgsm3Uhmlg/exec";
 
-
-const rsvpForm = $('#rsvpForm');
-const rsvpName = $('#rsvpName');
-const rsvpEmail = $('#rsvpEmail');
+const rsvpForm    = $('#rsvpForm');
+const rsvpName    = $('#rsvpName');
 const rsvpMessage = $('#rsvpMessage');
-const attendance = $('#attendance');
-
-const rsvpButton = $('#rsvpButton');
+const attendance  = $('#attendance');
+const rsvpButton  = $('#rsvpButton');
 const rsvpSuccess = $('#rsvpSuccess');
-const rsvpError = $('#rsvpError');
-
-const rsvpFrame = $('#rsvpFrame');
-
-const rsvpOptions = $$('.opt',rsvpForm);
-
-
-/* Connect form to Google Apps Script */
-
-rsvpForm.action = RSVP_URL;
+const rsvpError   = $('#rsvpError');
+const rsvpOptions = $$('.opt', rsvpForm);
 
 
 /* =========================================================
@@ -2550,9 +2518,7 @@ rsvpOptions.forEach(option => {
 
     option.addEventListener('click', () => {
 
-        rsvpOptions.forEach(item => {
-            item.classList.remove('on');
-        });
+        rsvpOptions.forEach(item => item.classList.remove('on'));
 
         option.classList.add('on');
 
@@ -2562,13 +2528,9 @@ rsvpOptions.forEach(option => {
 
     });
 
-
     option.addEventListener('keydown', e => {
 
-        if(
-            e.key === 'Enter' ||
-            e.key === ' '
-        ){
+        if(e.key === 'Enter' || e.key === ' '){
 
             e.preventDefault();
 
@@ -2585,109 +2547,98 @@ rsvpOptions.forEach(option => {
    RSVP SUBMISSION
    ========================================================= */
 
-let rsvpSubmitted = false;
+let rsvpSending = false;
 
+function showRsvpError(text, focusEl){
 
-rsvpForm.addEventListener('submit', function(e){
+    rsvpError.textContent = text;
+
+    rsvpError.classList.add('show');
+
+    if(focusEl) focusEl.focus();
+
+}
+
+rsvpForm.addEventListener('submit', async function(e){
+
+    e.preventDefault();
+
+    if(rsvpSending) return;
 
     rsvpError.classList.remove('show');
 
+    const name    = rsvpName.value.trim();
+    const message = rsvpMessage.value.trim();
 
-    if(!rsvpName.value.trim()){
-
-        e.preventDefault();
-
-        rsvpError.textContent =
-            'Please enter your full name.';
-
-        rsvpError.classList.add('show');
-
-        rsvpName.focus();
-
+    if(!name){
+        showRsvpError('Please enter your full name.', rsvpName);
         return;
-
     }
-
 
     if(!attendance.value){
-
-        e.preventDefault();
-
-        rsvpError.textContent =
-            'Please select Yes or No.';
-
-        rsvpError.classList.add('show');
-
+        showRsvpError('Please select Yes or No.');
         return;
-
     }
 
-
-    if(rsvpSubmitted){
-
-        e.preventDefault();
-
+    if(!message){
+        showRsvpError('Please write us a short message.', rsvpMessage);
         return;
-
     }
 
+    if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(RSVP_URL)){
+        showRsvpError('RSVP is not connected yet. Please contact the hosts.');
+        return;
+    }
 
-    rsvpSubmitted = true;
-
+    rsvpSending = true;
     rsvpButton.disabled = true;
+    rsvpButton.textContent = 'Sending...';
 
-    rsvpButton.textContent =
-        'Sending...';
+    try{
 
-});
-
-
-/* =========================================================
-   GOOGLE RESPONSE
-   ========================================================= */
-
-rsvpFrame.addEventListener('load', function(){
-
-    if(!rsvpSubmitted)
-        return;
-
-
-    setTimeout(() => {
+        /* text/plain keeps this a "simple" request, so the browser
+           sends it without a CORS preflight that Apps Script rejects. */
+        await fetch(RSVP_URL, {
+            method:'POST',
+            mode:'no-cors',
+            headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+                name: name,
+                attendance: attendance.value,
+                message: message
+            })
+        });
 
         rsvpSuccess.classList.add('show');
 
-        rsvpButton.textContent =
-            '✓ Confirmed';
-
-        rsvpButton.disabled = true;
-
+        rsvpButton.textContent = '✓ Confirmed';
 
         rsvpName.value = '';
-        rsvpEmail.value = '';
         rsvpMessage.value = '';
         attendance.value = '';
 
-
-        rsvpOptions.forEach(option => {
-            option.classList.remove('on');
-        });
-
+        rsvpOptions.forEach(option => option.classList.remove('on'));
 
         setTimeout(() => {
 
             rsvpButton.disabled = false;
-
-            rsvpButton.textContent =
-                'Confirm RSVP';
-
+            rsvpButton.textContent = 'Confirm RSVP';
             rsvpSuccess.classList.remove('show');
+            rsvpSending = false;
 
-            rsvpSubmitted = false;
+        }, 5000);
 
-        },5000);
+    }catch(error){
 
+        console.warn('RSVP failed:', error);
 
-    },500);
+        showRsvpError('Could not send your RSVP. Please check your connection and try again.');
+
+        rsvpButton.disabled = false;
+        rsvpButton.textContent = 'Confirm RSVP';
+        rsvpSending = false;
+
+    }
 
 });
 
